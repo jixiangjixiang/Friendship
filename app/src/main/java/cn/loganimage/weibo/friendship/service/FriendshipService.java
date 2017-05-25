@@ -22,14 +22,13 @@ public class FriendshipService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
 
         AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();
-        printEventLog(event);
+//        printEventLog(event);
 
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && "com.sina.weibo.page.ProfileInfoActivity".equals(event.getClassName())) {//如果在个人主页
             //点赞操作
             checkAndClickLikeBtn(rootNodeInfo);
         } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && "com.sina.weibo.feed.DetailWeiboActivity".equals(event.getClassName())) {//如果在微博详情页面
             saveUserListAndOpenIt(rootNodeInfo);
-
         }
     }
 
@@ -61,15 +60,19 @@ public class FriendshipService extends AccessibilityService {
                         for (int i = 0; i < likedRootList.size(); i++) {
                             String text = likedRootList.get(i).getText().toString();
                             tmpUserName.add(text);
-                            if (tmpUserName.equals(lastClickedName)) {
+                            if (text.equals(lastClickedName)) {
                                 samePoint = i;
                             }
                         }
 
+                        if(samePoint == likedRootList.size() - 1){
+                            Log.d(TAG, "全部任务执行完成");
+                            return;
+                        }
 
                         for (int i = samePoint; i < tmpUserName.size(); i++) {
                             userList.add(tmpUserName.get(i));
-                            Log.d(TAG, "添加进去的Name:" + tmpUserName.get(i));
+                            Log.d(TAG, "add Name:" + tmpUserName.get(i));
                         }
                         if (userList.size() != 0) {
                             String userName = userList.remove(0);
@@ -90,10 +93,16 @@ public class FriendshipService extends AccessibilityService {
     }
 
     private void openProfilePage(String userName, AccessibilityNodeInfo rootNodeInfo) {
+        lastClickedName = userName;
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         List<AccessibilityNodeInfo> nodeInfoList = rootNodeInfo.findAccessibilityNodeInfosByText(userName);
         if (nodeInfoList != null && nodeInfoList.size() != 0) {
             nodeInfoList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            Log.d(TAG, "执行的user:" + userName);
+            Log.d(TAG, "open the profile about:" + userName);
         }
     }
 
@@ -156,35 +165,49 @@ public class FriendshipService extends AccessibilityService {
             @Override
             public void run() {
                 List<AccessibilityNodeInfo> weiboLikedCount = null;
-//                List<AccessibilityNodeInfo> listViews = null;
+                List<AccessibilityNodeInfo> allWeiboList = null;
+                List<AccessibilityNodeInfo> listViews = null;
 
-                for (int i = 0; i < 10; i++) {
+                for (int i = 1; i < 10; i++) {
                     try {
                         Thread.sleep(1000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                     weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");//点赞数量
+                    allWeiboList = rootNodeInfo.findAccessibilityNodeInfosByText("All Weibo");
+
+
+                    boolean weiboListIsNull = true,likedListIsNull = true;
+
+                    if (allWeiboList != null && allWeiboList.size() != 0) {
+                        weiboListIsNull = false;
+                    }
                     if (weiboLikedCount != null && weiboLikedCount.size() != 0) {
-                        Log.d(TAG,"在个人主页中找到了点赞数量，耗时"+i+"秒");
+                        likedListIsNull = false;
                         break;
                     }
+
+//                    if(likedListIsNull && !weiboListIsNull){
+//                        Log.d(TAG,"用户微博数量为0");
+//                        clickBackBtn(rootNodeInfo);
+//                        return;
+//                    }
+
                 }
-//                try {
-//                    Thread.sleep(5000);
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                }
-//
-//
-//                listViews =  rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/content");
-//                if(listViews != null  && listViews.size() != 0) {
-//                    listViews.get(0).performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
-//                }
-//
-//
+
+                listViews =  rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/content");
+                if(listViews != null  && listViews.size() != 0) {
+                    listViews.get(0).performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
                 //查看赞数量
-//                weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");//点赞数量
+                weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");//点赞数量
 
                 if (weiboLikedCount != null && weiboLikedCount.size() != 0) {
                     String likedCountString = weiboLikedCount.get(0).getText().toString();
@@ -197,7 +220,7 @@ public class FriendshipService extends AccessibilityService {
                         }
                     }
 
-                    if (count < 20) {//如果小于5个
+                    if (count < 3) {//如果小于指定次数
                         doClickLikeBtn(rootNodeInfo);
                     } else {
                         Log.d(TAG, "点赞数量超出预设  " + weiboLikedCount.get(0).getText());
@@ -211,7 +234,7 @@ public class FriendshipService extends AccessibilityService {
                     return;
                 }
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(2000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -219,11 +242,12 @@ public class FriendshipService extends AccessibilityService {
             }
         }).start();
     }
-
+    private int count = 1;
     private void doClickLikeBtn(AccessibilityNodeInfo rootNodeInfo) {
         List<AccessibilityNodeInfo> weiboTextViews = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/ly_feed_like_icon");//点赞按钮
         if (weiboTextViews != null && weiboTextViews.size() != 0) {
-            Log.d(TAG, "找到了 点赞按钮 触发点击");
+            Log.d(TAG, "点赞----------  次数:"+count);
+            count ++;
             weiboTextViews.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
 
@@ -232,7 +256,6 @@ public class FriendshipService extends AccessibilityService {
     private void clickBackBtn(AccessibilityNodeInfo rootNodeInfo) {
         List<AccessibilityNodeInfo> backBtnList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/img_back");
         if (backBtnList != null && backBtnList.size() != 0) {
-            Log.d(TAG, "找到了 返回按钮");
             backBtnList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
     }
