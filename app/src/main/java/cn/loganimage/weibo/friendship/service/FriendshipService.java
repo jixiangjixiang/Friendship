@@ -1,10 +1,12 @@
 package cn.loganimage.weibo.friendship.service;
 
 import android.accessibilityservice.AccessibilityService;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -13,45 +15,89 @@ import java.util.List;
 
 public class FriendshipService extends AccessibilityService {
     private static String TAG = "FriendshipService";
-    private String description;
+    private String lastClickedName;
+    private ArrayList<String> userList;
 
-    private boolean isNeededClickWeibo = true;
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-//        Log.d(TAG,"onAccessibilityEvent");
-//        //微信UI界面的根节点，开始遍历节点
-//        AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();
-//        description = "";
-//        if (rootNodeInfo.getContentDescription() != null) {
-//            description = rootNodeInfo.getContentDescription().toString();
-//        }
-//        Log.d(TAG,"description:"+description);
-//
-//        List<AccessibilityNodeInfo>  detail = rootNodeInfo.findAccessibilityNodeInfosByText("微博正文");
-//        if(detail != null && detail.size() == 1){//是微博正文页面
-//            Log.d(TAG,"detail size:");
-//        }
+
+        AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();
+        printEventLog(event);
+
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && "com.sina.weibo.page.ProfileInfoActivity".equals(event.getClassName())) {//如果在个人主页
+            //点赞操作
+            checkAndClickLikeBtn(rootNodeInfo);
+        } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && "com.sina.weibo.feed.DetailWeiboActivity".equals(event.getClassName())) {//如果在微博详情页面
+            saveUserListAndOpenIt(rootNodeInfo);
+
+        }
+    }
+
+    private void saveUserListAndOpenIt(final AccessibilityNodeInfo rootNodeInfo) {
+        if (userList == null) {
+            userList = new ArrayList<>();
+            List<AccessibilityNodeInfo> likedRootList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tvItemNickname");
+            for (AccessibilityNodeInfo node : likedRootList) {
+                userList.add(node.getText().toString());
+            }
+        }
 
 
+        if (userList.size() == 0) {//如果用户全被执行完成 滑动到下一屏幕
+            List<AccessibilityNodeInfo> listViews = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tweet_list");
+            if (listViews != null && listViews.size() != 0) {
+                listViews.get(0).performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        ArrayList<String> tmpUserName = new ArrayList<String>();
+                        int samePoint = 0;
+                        List<AccessibilityNodeInfo> likedRootList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tvItemNickname");
+                        for (int i = 0; i < likedRootList.size(); i++) {
+                            String text = likedRootList.get(i).getText().toString();
+                            tmpUserName.add(text);
+                            if (tmpUserName.equals(lastClickedName)) {
+                                samePoint = i;
+                            }
+                        }
 
-        //触发 click 进入个人主页的代码
-//        AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();
-//        //         if(!"com.sina.weibo.feed.DetailWeiboActivity".equals(event.getClassName())){//             Log.d(TAG,"onAccessibilityEvent 没在微博详情页面");//         }        //微信UI界面的根节点，开始遍历节点        AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();        description = "";        if (rootNodeInfo.getContentDescription() != null) {
-////        description = rootNodeInfo.getContentDescription().toString();        }
-//        Log.d(TAG, "description:" + description);
-//        List<AccessibilityNodeInfo> detail = rootNodeInfo.findAccessibilityNodeInfosByText("微博正文");
-//        if (detail != null && detail.size() == 1) {//是微博正文页面            Log.d(TAG,"detail size:");        }
-//
-//            List<AccessibilityNodeInfo> likedRootList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tvItemNickname");
-//            if (likedRootList != null && likedRootList.size() == 0) {//是微博正文页面            return;        }
-//                Log.d(TAG, "准备触发click:");
-//                likedRootList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-//
-//
-//            }
-//        }
 
+                        for (int i = samePoint; i < tmpUserName.size(); i++) {
+                            userList.add(tmpUserName.get(i));
+                            Log.d(TAG, "添加进去的Name:" + tmpUserName.get(i));
+                        }
+                        if (userList.size() != 0) {
+                            String userName = userList.remove(0);
+                            openProfilePage(userName, rootNodeInfo);
+                        }
 
+                    }
+                }).start();
+                return;
+            }
+        }
+
+        if (userList.size() != 0) {
+            String userName = userList.remove(0);
+            openProfilePage(userName, rootNodeInfo);
+        }
+
+    }
+
+    private void openProfilePage(String userName, AccessibilityNodeInfo rootNodeInfo) {
+        List<AccessibilityNodeInfo> nodeInfoList = rootNodeInfo.findAccessibilityNodeInfosByText(userName);
+        if (nodeInfoList != null && nodeInfoList.size() != 0) {
+            nodeInfoList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            Log.d(TAG, "执行的user:" + userName);
+        }
+    }
+
+    private void printEventLog(AccessibilityEvent event) {
         int eventType = event.getEventType();
         String eventText = "";
         switch (eventType) {
@@ -101,48 +147,94 @@ public class FriendshipService extends AccessibilityService {
                 eventText = "TYPE_WINDOW_CONTENT_CHANGED";
                 break;
         }
-        eventText = eventText + ":" + eventType;
+        eventText = eventText + ":" + eventType + "   className:" + event.getClassName();
         Log.i(TAG, eventText);
+    }
 
-        AccessibilityNodeInfo rootNodeInfo = getRootInActiveWindow();
+    private void checkAndClickLikeBtn(final AccessibilityNodeInfo rootNodeInfo) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                List<AccessibilityNodeInfo> weiboLikedCount = null;
+//                List<AccessibilityNodeInfo> listViews = null;
 
-        if(event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && "com.sina.weibo.page.ProfileInfoActivity".equals(event.getClassName())){//如果在个人主页
-            Log.d(TAG,"当前类在个人主页");
+                for (int i = 0; i < 10; i++) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");//点赞数量
+                    if (weiboLikedCount != null && weiboLikedCount.size() != 0) {
+                        Log.d(TAG,"在个人主页中找到了点赞数量，耗时"+i+"秒");
+                        break;
+                    }
+                }
+//                try {
+//                    Thread.sleep(5000);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//
+//
+//                listViews =  rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/content");
+//                if(listViews != null  && listViews.size() != 0) {
+//                    listViews.get(0).performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+//                }
+//
+//
+                //查看赞数量
+//                weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");//点赞数量
 
-            //测试返回按钮
-            List<AccessibilityNodeInfo> backBtnList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/img_back");
-            if (backBtnList != null && backBtnList.size() != 0) {
-                Log.d(TAG, "找到了 返回按钮");
-                backBtnList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                isNeededClickWeibo = false;
+                if (weiboLikedCount != null && weiboLikedCount.size() != 0) {
+                    String likedCountString = weiboLikedCount.get(0).getText().toString();
+                    int count = 0;
+                    if (!TextUtils.isEmpty(likedCountString) && !likedCountString.equals("Likes")) {//如果 count
+                        try {
+                            count = Integer.valueOf(likedCountString);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                        }
+                    }
+
+                    if (count < 20) {//如果小于5个
+                        doClickLikeBtn(rootNodeInfo);
+                    } else {
+                        Log.d(TAG, "点赞数量超出预设  " + weiboLikedCount.get(0).getText());
+                        clickBackBtn(rootNodeInfo);
+                        return;
+                    }
+
+                } else {
+                    Log.d(TAG, "没有找到点赞数量的id");
+                    clickBackBtn(rootNodeInfo);
+                    return;
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                clickBackBtn(rootNodeInfo);
             }
+        }).start();
+    }
+
+    private void doClickLikeBtn(AccessibilityNodeInfo rootNodeInfo) {
+        List<AccessibilityNodeInfo> weiboTextViews = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/ly_feed_like_icon");//点赞按钮
+        if (weiboTextViews != null && weiboTextViews.size() != 0) {
+            Log.d(TAG, "找到了 点赞按钮 触发点击");
+            weiboTextViews.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
 
-        if(isNeededClickWeibo) {
-//            List<AccessibilityNodeInfo> weiboTextViews = rootNodeInfo.findAccessibilityNodeInfosByText("Weibo");
-//            if (weiboTextViews != null && weiboTextViews.size() != 0) {
-//                Log.d(TAG, "找到了 weiboTextView 触发点击");
-//                weiboTextViews.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-//                isNeededClickWeibo = false;
-//            }
+    }
 
-
-            //点赞操作
-//            List<AccessibilityNodeInfo> weiboTextViews = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/ly_feed_like_icon");
-//            if (weiboTextViews != null && weiboTextViews.size() != 0) {
-//                Log.d(TAG, "找到了 点赞按钮 触发点击");
-//                weiboTextViews.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-//                isNeededClickWeibo = false;
-//            }
-
-//            //查看赞数量
-//            List<AccessibilityNodeInfo> weiboLikedCount = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/tv_feed_like_count");
-//            if (weiboLikedCount != null && weiboLikedCount.size() != 0) {
-//                Log.d(TAG, "找到了 点赞数量Text 查看第一个的个数:"+weiboLikedCount.get(0).getText());
-//                isNeededClickWeibo = false;
-//            }
+    private void clickBackBtn(AccessibilityNodeInfo rootNodeInfo) {
+        List<AccessibilityNodeInfo> backBtnList = rootNodeInfo.findAccessibilityNodeInfosByViewId("com.sina.weibo:id/img_back");
+        if (backBtnList != null && backBtnList.size() != 0) {
+            Log.d(TAG, "找到了 返回按钮");
+            backBtnList.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
-
     }
 
     @Override
